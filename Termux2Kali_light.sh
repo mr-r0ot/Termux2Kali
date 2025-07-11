@@ -1,100 +1,96 @@
 #!/usr/bin/env bash
 #
-# Termux2Kali_ultimate.sh
-# The most comprehensive Kali‑style tool installer for Termux
-# - Native pkg tools + Python/Ruby/NodeJS/Go/Rust/Cargo
-# - Git‑based frameworks & scripts
-# - Custom “Welcome to kali” banner on each launch
+# Termux2Kali_ultra_light.sh
+# Most-comprehensive Kali‑style installer in pure Termux (no chroot)
+# Mixes pkg, pip, gem, npm, go, cargo & git.
 #
-# Usage: bash Termux2Kali_ultimate.sh
+# Usage: bash Termux2Kali_ultra_light.sh
 
 set -euo pipefail
 IFS=$'\n\t'
-
 BASHRC="$HOME/.bashrc"
 
 echo -e "\n[*] Updating Termux & enabling repos…"
 pkg update -y && pkg upgrade -y
-pkg install -y unstable-repo root-repo
+pkg install -y unstable-repo root-repo || true
 
-echo -e "\n[*] Installing core pkg tools…"
-pkg install -y \
-  nmap netcat-openbsd openssh curl wget git vim \
-  hydra hashcat sqlmap john metasploit \
-  net-tools tcpdump tshark dnsutils whois dsniff \
-  aircrack-ng responder ike-scan snmp \
-  binutils clang gcc make perl python python2 ruby \
-  php golang rust rustc cargo \
-  neofetch tmux htop figlet cowsay
+echo -e "\n[*] Installing available core pkg tools…"
+CORE_PKG=(nmap netcat-openbsd openssh curl wget git vim \
+          neofetch tmux htop figlet cowsay python python2 \
+          nodejs golang rust)
+for p in "${CORE_PKG[@]}"; do
+  pkg install -y "$p" || echo "[!] pkg: $p not found, skipping"
+done
 
 echo -e "\n[*] Installing Python tools via pip…"
-pip install --no-cache-dir \
-  impacket pwntools scapy recon-ng theHarvester \
-  sublist3r massdns urllib3 requests grequests \
-  cloudscraper bleach python-nmap wordlists \
-  ldap3 xmltodict
+PY_TOOLS=(sqlmap impacket pwntools scapy theHarvester \
+          sublist3r masscan python-nmap wordlists \
+          requests beautifulsoup4)
+for t in "${PY_TOOLS[@]}"; do
+  pip install --no-cache-dir "$t" || echo "[!] pip: $t failed"
+done
 
 echo -e "\n[*] Installing Ruby tools via gem…"
-gem install --no-document \
-  wpscan patator evilginx2 metasploit-framework \
-  dirhunt proxifier
+GEM_TOOLS=(wpscan patator)
+for g in "${GEM_TOOLS[@]}"; do
+  gem install --no-document "$g" || echo "[!] gem: $g failed"
+done
 
 echo -e "\n[*] Installing Node.js tools via npm…"
-npm install -g --no-fund --no-audit \
-  httpx subfinder nuclei ffuf dirsearch \
-  eyewitness dalfox wappalyzer-cli whatweb
+NPM_TOOLS=(httpx subfinder nuclei ffuf dirsearch \
+           eyewitness dalfox wappalyzer-cli)
+for n in "${NPM_TOOLS[@]}"; do
+  npm install -g --no-fund --no-audit "$n" || echo "[!] npm: $n failed"
+done
 
 echo -e "\n[*] Installing Go‑based tools…"
 export GOPATH="$HOME/go"
 mkdir -p "$GOPATH/bin"
-go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-go install github.com/projectdiscovery/httpx/cmd/httpx@latest
-go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
-go install github.com/projectdiscovery/nuclei/v2/cmd/nuclei@latest
-go install github.com/projectdiscovery/chaos-client/cmd/chaos@latest
-go install github.com/tomnomnom/httprobe@latest
-go install github.com/tomnomnom/waybackurls@latest
-go install github.com/tomnomnom/gf@latest
-go install github.com/jaeles-project/gospider@latest
-echo "export PATH=\$PATH:\$GOPATH/bin" >> ~/.bashrc
+GO_TOOLS=(
+  github.com/projectdiscovery/subfinder/v2/cmd/subfinder
+  github.com/projectdiscovery/httpx/cmd/httpx
+  github.com/projectdiscovery/naabu/v2/cmd/naabu
+  github.com/projectdiscovery/nuclei/v2/cmd/nuclei
+  github.com/tomnomnom/httprobe
+)
+for pkg_path in "${GO_TOOLS[@]}"; do
+  go install "$pkg_path@latest" || echo "[!] go: $pkg_path failed"
+done
+echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
 
 echo -e "\n[*] Installing Rust‑based tools via cargo…"
-cargo install \
-  rustscan altdns grex cargo-tarpaulin
+CARGO_TOOLS=(rustscan altdns grex)
+for c in "${CARGO_TOOLS[@]}"; do
+  cargo install "$c" || echo "[!] cargo: $c failed"
+done
 
-echo -e "\n[*] Cloning & setting up Git‑based frameworks…"
+echo -e "\n[*] Cloning & setting up key Git‑based tools…"
 cd "$HOME"
-git clone --depth=1 https://github.com/PortSwigger/burp_suite_community.git burp
-git clone --depth=1 https://github.com/kgretzky/evilginx2.git evilginx2
-git clone --depth=1 https://github.com/Veil-Framework/Veil.git veil && cd veil && ./Install.sh -c && cd "$HOME"
-git clone --depth=1 https://github.com/OSCP-Tools/AutoRecon.git autorecon
-git clone --depth=1 https://github.com/SecureAuthCorp/impacket.git && cd impacket && pip install . && cd "$HOME"
-git clone --depth=1 https://github.com/PowerShellMafia/PowerSploit.git
-git clone --depth=1 https://github.com/Greenwolf/Responder.git responder.py
+# Burp Suite community (Java GUI—needs Java, may skip)
+git clone --depth=1 https://github.com/PortSwigger/burp_suite_community.git burp || true
+# Evilginx2 (may require Linux kernel features; likely non‑functional)
+git clone --depth=1 https://github.com/kgretzky/evilginx2.git || true
+# AutoRecon (Python)
+git clone --depth=1 https://github.com/OSCP-Tools/AutoRecon.git autorecon && \
+  cd autorecon && pip install . && cd "$HOME" || true
 
-echo -e "\n[*] Cleanup APT caches…"
-apt clean && apt autoclean
+echo -e "\n[*] Cleanup…"
+pkg clean || true
 
-echo -e "\n✅ Ultimate Kali‑style toolset installed!"
+echo -e "\n✅ Installed Kali‑style tools in pure Termux!"
+echo -e "Try some commands:\n  nmap --version\n  sqlmap --help\n  subfinder -h\n  httpx -h\n  rustscan --help\n"
 
-# 4) Configure banner & prompt in ~/.bashrc
-echo -e "\n[*] Configuring 'Welcome to kali' banner in $BASHRC…"
-grep -q "WELCOME_TO_KALI" "$BASHRC" || cat >> "$BASHRC" <<'EOF'
+# Configure Welcome banner in ~/.bashrc
+if ! grep -q "WELCOME_TO_KALI" "$BASHRC"; then
+  echo -e "\n[*] Adding Welcome banner to ~/.bashrc…"
+  cat >> "$BASHRC" <<'EOF'
 
 # --- WELCOME_TO_KALI START ---
 clear
-echo -e "\e[1;31m"
-echo "  _    _      _ _        __        __         _     _ "
-echo " | |  | |    | | |       \ \\      / /        | |   | |"
-echo " | |__| | ___| | | ___    \ \\ /\ / /__  _ __ | | __| |"
-echo " |  __  |/ _ \\ | |/ _ \\    \ V  V / _ \\| '_ \\| |/ _\` |"
-echo " | |  | |  __/ | | (_) |    | | | (_) | | | | | (_| |"
-echo " |_|  |_|\\___|_|_|\\___( )   |_|  \\___/|_| |_|_|\\__,_|"
-echo "                     |/        "
-echo -e "\e[0m"
-echo -e "\e[1;33mWelcome to kali!\e[0m"
+echo -e "\e[1;31mWelcome to kali\e[0m"
 PS1="\[\e[31m\]\u@kali:\w# \[\e[0m\]"
 # --- WELCOME_TO_KALI END ---
 EOF
+fi
 
-echo -e "\n🎉 Done! Restart Termux to see the new banner and start hacking.\n"
+echo -e "\n🎉 Done! Restart Termux to see banner and use tools."
