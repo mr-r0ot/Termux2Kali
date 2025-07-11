@@ -1,88 +1,96 @@
 #!/usr/bin/env bash
 #
-# install-kali-termux.sh
-# A fully automated script to transform Termux into a persistent Kali Linux environment
-# Usage: bash install-kali-termux.sh (run once)
-# After installation, every new Termux session will automatically enter Kali
+# install-termux-kali
+# Fully automated: turns Termux into persistent Kali Linux with full toolset
+# Prompts you once for a user account (username & optional password),
+# then every new Termux session asks for those credentials and drops you into your Kali user.
+#
+# Usage: bash install-termux-kali.sh
 
 set -euo pipefail
 IFS=$'\n\t'
 
-# Configuration
-KALI_DISTRO="kali"
-KALI_RELEASE="kali-rolling"
-KALI_MIRROR="http://http.kali.org/kali"
+DISTRO="kali-rolling"
+MIRROR="http://http.kali.org/kali"
 
-# 1. Verify running inside Termux
+# 1) Check running in Termux
 if [[ -z "${PREFIX##*com.termux*}" ]]; then
-  echo "[+] Detected Termux environment"
+  echo "[+] Detected Termux"
 else
-  echo "[!] This installer must be run inside Termux"
+  echo "[!] Please run this inside Termux"
   exit 1
 fi
 
-# 2. Update Termux and install dependencies
-echo "[*] Updating Termux packages..."
+# 2) Prompt for desired Kali user
+read -p "Enter new Kali username: " KALI_USER
+read -s -p "Enter Kali password (leave empty => no password): " KALI_PASS; echo
+
+# 3) Install Termux deps
+echo "[*] Updating Termux & installing dependencies..."
 pkg update -y && pkg upgrade -y
+pkg install -y proot-distro git wget
 
-echo "[*] Installing dependencies: proot-distro, wget, git..."
-pkg install -y proot-distro wget git
+# 4) Install Kali rootfs
+echo "[*] Installing Kali ($DISTRO) via proot-distro..."
+proot-distro install "$DISTRO"
 
-# 3. Install Kali Linux via proot-distro
-echo "[*] Installing Kali Linux ($KALI_RELEASE)..."
-proot-distro install "$KALI_DISTRO"
-
-# 4. Configure Kali apt sources and install full toolset
-echo "[*] Configuring Kali APT sources and installing complete toolset..."
-proot-distro login "$KALI_DISTRO" -- bash -lc "
+# 5) Inside Kali: configure APT & install full toolset + create user
+echo "[*] Configuring Kali and installing all tools..."
+proot-distro login "$DISTRO" -- bash -lc "
+# set Kali repos
 cat > /etc/apt/sources.list <<EOF
-\
-deb $KALI_MIRROR $KALI_RELEASE main contrib non-free
-\
-#deb-src $KALI_MIRROR $KALI_RELEASE main contrib non-free
+deb $MIRROR $DISTRO main contrib non-free
+#deb-src $MIRROR $DISTRO main contrib non-free
 EOF
 apt update -y && apt upgrade -y
-# Install meta-packages for full Kali toolset
+
+# install meta-packages (all Kali tools) + Python
 apt install -y kali-linux-default kali-linux-full kali-tools-top10 python3 python3-pip
-"    
 
-# 5. Set up automatic launch of Kali on new Termux sessions
-echo "[*] Configuring Termux to enter Kali on startup..."
-BASHRC="$HOME/.bashrc"
-# Append auto-login block if not present
-if ! grep -q "AUTO_KALI_LOGIN" "$BASHRC"; then
-  cat >> "$BASHRC" <<'EOF'
-# --- AUTO_KALI_LOGIN START ---
-if [[ -z "$IN_KALI" ]]; then
-  export IN_KALI=1
-  exec proot-distro login kali
-fi
-# --- AUTO_KALI_LOGIN END ---
-EOF
+# create user & set password
+useradd -m -s /bin/bash $KALI_USER
+if [[ -n \"$KALI_PASS\" ]]; then
+  echo \"$KALI_USER:$KALI_PASS\" | chpasswd
+else
+  passwd -d $KALI_USER
 fi
 
-# 6. Customize Kali banner (motd)
-echo "[*] Setting custom Kali banner..."
-proot-distro login "$KALI_DISTRO" -- bash -lc "
-cat > /etc/motd <<'EOF'
-
-  _____      _    _ _ _        _   _      _      _
- |  __ \    | |  | | (_)      | | | |    | |    | |
- | |  | | __| |  | | |_ _ __  | | | | ___| | ___| |_ ___ _ __
- | |  | |/ _\` |  | | | | '__| | | | |/ _ \ |/ _ \ __/ _ \ '__|
- | |__| | (_| |  | | | | |    | |_| |  __/ |  __/ ||  __/ |
- |_____/ \__,_|  |_|_|_|_|     \___/ \___|_|\___|\__\___|_|
-
- Welcome to Kali Linux on Termux!
- EOF
+# disable root login via password (optional)
+passwd -l root
 "
 
-# 7. Final message and immediate entry into Kali
-cat << EOF
+# 6) Configure Termux to auto-prompt & launch Kali on each session
+echo "[*] Setting up auto-login in ~/.bashrc..."
+cat >> ~/.bashrc <<'EOF'
+# --- AUTO-KALI LOGIN ---
+if [[ -z "$IN_KALI" ]]; then
+  export IN_KALI=1
+  # prompt each session
+  read -p "Kali username: " __KU
+  read -s -p "Kali password (leave empty => no pass): " __KP; echo
+  # launch Kali as root, then switch to user
+  exec proot-distro login kali-rolling -- bash -lc "\
+if [[ -n '$__KP' ]]; then \
+  echo $__KP | su - \$__KU; \
+else \
+  su - \$__KU; \
+fi"
+fi
+# --- END AUTO-KALI LOGIN ---
+EOF
 
-✅ Installation complete! You will now be dropped into Kali Linux.
-   Every future Termux session will automatically enter Kali.
+# 7) Final message & immediate entry
+cat <<EOF
+
+✅ Installation complete!
+   From now on, every Termux session will:
+
+   1) Ask for your Kali username & password  
+   2) Enter Kali Linux and switch to that user  
+
+Just open a new Termux tab/window and enjoy Kali 🎉
 
 EOF
-# Enter Kali immediately
-exec proot-distro login "$KALI_DISTRO"
+
+# drop into Kali right now
+exec proot-distro login "$DISTRO" -- bash -lc "su - $KALI_USER"
