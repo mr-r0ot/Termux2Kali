@@ -1,96 +1,38 @@
-#!/usr/bin/env bash
-#
-# Termux2Kali_ultra_light.sh
-# Most-comprehensive Kali‑style installer in pure Termux (no chroot)
-# Mixes pkg, pip, gem, npm, go, cargo & git.
-#
-# Usage: bash Termux2Kali_ultra_light.sh
+#!/data/data/com.termux/files/usr/bin/env bash
+set -e
 
-set -euo pipefail
-IFS=$'\n\t'
-BASHRC="$HOME/.bashrc"
+# 1) update Termux & install proot-distro
+pkg update && pkg upgrade -y
+pkg install -y proot proot-distro wget
 
-echo -e "\n[*] Updating Termux & enabling repos…"
-pkg update -y && pkg upgrade -y
-pkg install -y unstable-repo root-repo || true
+# 2) install Debian if missing
+echo "[*] Installing Debian..."
+proot-distro install debian
 
-echo -e "\n[*] Installing available core pkg tools…"
-CORE_PKG=(nmap netcat-openbsd openssh curl wget git vim \
-          neofetch tmux htop figlet cowsay python python2 \
-          nodejs golang rust)
-for p in "${CORE_PKG[@]}"; do
-  pkg install -y "$p" || echo "[!] pkg: $p not found, skipping"
-done
+# 3) bootstrap Kali CLI tools (once)
+echo "[*] Adding Kali repo & installing all CLI tools..."
+proot-distro login debian -- bash -lc "
+    set -e
+    apt update
+    apt install -y gnupg2 curl
+    # add Kali Rolling key & repo
+    wget -q -O - https://archive.kali.org/archive-key.asc | apt-key add -
+    echo 'deb http://http.kali.org/kali kali-rolling main contrib non-free' \
+      >> /etc/apt/sources.list
+    apt update
+    # install every non‑GUI Kali package
+    apt install -y kali-linux-headless
+    # clean up
+    apt clean
+    rm -rf /var/lib/apt/lists/*
+  "
+  
 
-echo -e "\n[*] Installing Python tools via pip…"
-PY_TOOLS=(sqlmap impacket pwntools scapy theHarvester \
-          sublist3r masscan python-nmap wordlists \
-          requests beautifulsoup4)
-for t in "${PY_TOOLS[@]}"; do
-  pip install --no-cache-dir "$t" || echo "[!] pip: $t failed"
-done
+echo "[+] Kali CLI tools installed."
 
-echo -e "\n[*] Installing Ruby tools via gem…"
-GEM_TOOLS=(wpscan patator)
-for g in "${GEM_TOOLS[@]}"; do
-  gem install --no-document "$g" || echo "[!] gem: $g failed"
-done
 
-echo -e "\n[*] Installing Node.js tools via npm…"
-NPM_TOOLS=(httpx subfinder nuclei ffuf dirsearch \
-           eyewitness dalfox wappalyzer-cli)
-for n in "${NPM_TOOLS[@]}"; do
-  npm install -g --no-fund --no-audit "$n" || echo "[!] npm: $n failed"
-done
+# 4) launch Debian shell
+exho "[INFO] You can always enter the penetration testing environment with this command. >>> proot-distro login debian"
+echo "[*] Launching Debian..."
 
-echo -e "\n[*] Installing Go‑based tools…"
-export GOPATH="$HOME/go"
-mkdir -p "$GOPATH/bin"
-GO_TOOLS=(
-  github.com/projectdiscovery/subfinder/v2/cmd/subfinder
-  github.com/projectdiscovery/httpx/cmd/httpx
-  github.com/projectdiscovery/naabu/v2/cmd/naabu
-  github.com/projectdiscovery/nuclei/v2/cmd/nuclei
-  github.com/tomnomnom/httprobe
-)
-for pkg_path in "${GO_TOOLS[@]}"; do
-  go install "$pkg_path@latest" || echo "[!] go: $pkg_path failed"
-done
-echo 'export PATH=$PATH:$HOME/go/bin' >> ~/.bashrc
-
-echo -e "\n[*] Installing Rust‑based tools via cargo…"
-CARGO_TOOLS=(rustscan altdns grex)
-for c in "${CARGO_TOOLS[@]}"; do
-  cargo install "$c" || echo "[!] cargo: $c failed"
-done
-
-echo -e "\n[*] Cloning & setting up key Git‑based tools…"
-cd "$HOME"
-# Burp Suite community (Java GUI—needs Java, may skip)
-git clone --depth=1 https://github.com/PortSwigger/burp_suite_community.git burp || true
-# Evilginx2 (may require Linux kernel features; likely non‑functional)
-git clone --depth=1 https://github.com/kgretzky/evilginx2.git || true
-# AutoRecon (Python)
-git clone --depth=1 https://github.com/OSCP-Tools/AutoRecon.git autorecon && \
-  cd autorecon && pip install . && cd "$HOME" || true
-
-echo -e "\n[*] Cleanup…"
-pkg clean || true
-
-echo -e "\n✅ Installed Kali‑style tools in pure Termux!"
-echo -e "Try some commands:\n  nmap --version\n  sqlmap --help\n  subfinder -h\n  httpx -h\n  rustscan --help\n"
-
-# Configure Welcome banner in ~/.bashrc
-if ! grep -q "WELCOME_TO_KALI" "$BASHRC"; then
-  echo -e "\n[*] Adding Welcome banner to ~/.bashrc…"
-  cat >> "$BASHRC" <<'EOF'
-
-# --- WELCOME_TO_KALI START ---
-clear
-echo -e "\e[1;31mWelcome to kali\e[0m"
-PS1="\[\e[31m\]\u@kali:\w# \[\e[0m\]"
-# --- WELCOME_TO_KALI END ---
-EOF
-fi
-
-echo -e "\n🎉 Done! Restart Termux to see banner and use tools."
+exec proot-distro login debian
